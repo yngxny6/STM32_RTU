@@ -39,3 +39,19 @@
 
 # debug information files
 *.dwo
+
+# Keil specific
+*.uvgui.*
+*.uvguix.*
+*.uvopt
+*.uvoptx
+*.bak
+*.dep
+*.lst
+*.m51
+*.map
+*.hex
+*.bin
+*.axf
+Objects/
+Listings/
