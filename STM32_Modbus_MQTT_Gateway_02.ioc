@@ -2,7 +2,7 @@
 FREERTOS.FootprintOK=true
 FREERTOS.IPParameters=Tasks01,FootprintOK,Queues01
 FREERTOS.Queues01=ModbusDataQueue,4,uint16_t,0,Dynamic,NULL,NULL
-FREERTOS.Tasks01=StartTask,0,128,StartDefaultTask,Default,NULL,Dynamic,NULL,NULL;Task_Modbus,2,128,StartTask_Modbus,Default,NULL,Dynamic,NULL,NULL;Task_MQTT,0,128,StartTask_MQTT,Default,NULL,Dynamic,NULL,NULL;WebTask,-1,128,StartWebTask,Default,NULL,Dynamic,NULL,NULL
+FREERTOS.Tasks01=StartTask,0,128,StartDefaultTask,Default,NULL,Dynamic,NULL,NULL;Task_Modbus,2,128,StartTask_Modbus,Default,NULL,Dynamic,NULL,NULL;Task_MQTT,0,128,StartTask_MQTT,Default,NULL,Dynamic,NULL,NULL
 File.Version=6
 GPIO.groupedBy=Group By Peripherals
 KeepUserPlacement=false

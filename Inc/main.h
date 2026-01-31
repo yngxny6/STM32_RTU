@@ -32,12 +32,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-// 定义 MQTT 配置结构体
-typedef struct {
-    char Broker_IP[16];   // 例如 "47.108.186.235"
-    uint16_t Broker_Port; // 例如 1883
-    char Client_ID[32];   // 例如 "RTU_Device_001"
-} SystemConfig_t;
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/

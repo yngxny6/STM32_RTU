@@ -2,29 +2,40 @@
 #include "spi.h"   // 必须包含 CubeMX 生成的 spi.h
 #include "gpio.h"
 #include <stdio.h>
-#include "cmsis_os.h" // 必须引用，否则找不到 osMutex
-extern osMutexId spiMutexHandle; // 引用 main.c 里的锁
 
 /* 引用外部的 SPI 句柄，在 main.c 或 spi.c 中定义 */
 extern SPI_HandleTypeDef hspi1;
 
-// 1. SPI 交换函数：保持纯净，不要在这里加锁
-uint8_t Spi395Exchange(uint8_t d) {
-    uint8_t rx_data = 0;
-    HAL_SPI_TransmitReceive(&hspi1, &d, &rx_data, 1, 10);
-    return rx_data;
+/**
+  * @brief  控制 CS 片选引脚为高电平
+  */
+void CH395_CS_High(void)
+{
+    HAL_GPIO_WritePin(CH395_CS_PORT, CH395_CS_PIN, GPIO_PIN_SET);
 }
 
-// 2. CS 拉低：在这里“拿锁”，锁住整条 SPI 总线
-void CH395_CS_Low(void) {
-    if(spiMutexHandle != NULL) osMutexWait(spiMutexHandle, osWaitForever); // 拿到锁才准开始
+/**
+  * @brief  控制 CS 片选引脚为低电平
+  */
+void CH395_CS_Low(void)
+{
     HAL_GPIO_WritePin(CH395_CS_PORT, CH395_CS_PIN, GPIO_PIN_RESET);
 }
 
-// 3. CS 拉高：在这里“放锁”，彻底结束本次通讯
-void CH395_CS_High(void) {
-    HAL_GPIO_WritePin(CH395_CS_PORT, CH395_CS_PIN, GPIO_PIN_SET);
-    if(spiMutexHandle != NULL) osMutexRelease(spiMutexHandle); // 通讯彻底结束才放锁
+/**
+  * @brief  SPI 交换一个字节 (发送并接收)
+  */
+uint8_t Spi395Exchange(uint8_t d)
+{
+    uint8_t rx_data = 0;
+    // 使用 HAL 库的 SPI 读写函数，超时时间设为 10ms
+    if (HAL_SPI_TransmitReceive(&hspi1, &d, &rx_data, 1, 10) != HAL_OK)
+    {
+        // 如果出错，可以打印个错误日志，或者重置 SPI
+        // printf("SPI Error!\r\n"); 
+        return 0xFF;
+    }
+    return rx_data;
 }
 
 /**

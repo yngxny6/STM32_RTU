@@ -1,7 +1,5 @@
 --cpu Cortex-M3
 "stm32_modbus_mqtt_gateway_02\startup_stm32f103xe.o"
-"stm32_modbus_mqtt_gateway_02\ch395.o"
-"stm32_modbus_mqtt_gateway_02\ch395cmd.o"
 "stm32_modbus_mqtt_gateway_02\main.o"
 "stm32_modbus_mqtt_gateway_02\gpio.o"
 "stm32_modbus_mqtt_gateway_02\freertos.o"
@@ -10,6 +8,8 @@
 "stm32_modbus_mqtt_gateway_02\stm32f1xx_it.o"
 "stm32_modbus_mqtt_gateway_02\stm32f1xx_hal_msp.o"
 "stm32_modbus_mqtt_gateway_02\stm32f1xx_hal_timebase_tim.o"
+"stm32_modbus_mqtt_gateway_02\ch395.o"
+"stm32_modbus_mqtt_gateway_02\ch395cmd.o"
 "stm32_modbus_mqtt_gateway_02\stm32f1xx_hal_gpio_ex.o"
 "stm32_modbus_mqtt_gateway_02\stm32f1xx_hal.o"
 "stm32_modbus_mqtt_gateway_02\stm32f1xx_hal_rcc.o"

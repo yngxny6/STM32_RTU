@@ -33,12 +33,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-extern SystemConfig_t sysConfig;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,17 +48,10 @@ extern SystemConfig_t sysConfig;
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t rx3_buffer[1];       // 接收单字节缓�?
-uint8_t modbus_rx_buf[128];  // 完整帧缓�?
+uint8_t rx3_buffer[1];       // 接收单字节缓冲
+uint8_t modbus_rx_buf[128];  // 完整帧缓冲
 uint16_t modbus_rx_index = 0;
-uint8_t modbus_frame_received = 0; // 标志�?
-
-SystemConfig_t sysConfig = {
-    .Broker_IP = "47.108.186.235", // 默认�?
-    .Broker_Port = 1883,
-    .Client_ID = "STM32_RTU_Default"
-};
-osMutexId spiMutexHandle;
+uint8_t modbus_frame_received = 0; // 标志位
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -109,28 +101,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  printf("System Starting...\r\n");
-
-  // ==========================================================
-  // !!! �����޸������ð��� VS1053 оƬ����ֹ SPI1 ��ͻ !!!
-  // ==========================================================
-  // 1. ���� GPIOF ʱ�� (VS1053 ��Ƭѡ�� PF6 �� PF7)
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-
-  GPIO_InitTypeDef GPIO_InitStruct_VS = {0};
-  GPIO_InitStruct_VS.Pin = GPIO_PIN_6 | GPIO_PIN_7;
-  GPIO_InitStruct_VS.Mode = GPIO_MODE_OUTPUT_PP; // �������
-  GPIO_InitStruct_VS.Pull = GPIO_PULLUP;         // ���� (Ĭ�Ͻ���)
-  GPIO_InitStruct_VS.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct_VS);
-
-  // 2. ����Ƭѡ (CS=1, XDCS=1)�����׽��� VS1053
-  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_7, GPIO_PIN_SET);
+  printf("System Starting...\r\n"); // 打印一句，测试串口1好不好使
   
-  printf("VS1053 Disabled (CS/DCS High). SPI1 is clean.\r\n");
-
-  // 3. ���� RS485 �����ж�
+  // !!! 必须添加这一句，开启 RS485 (串口3) 的接收中断 !!!
   HAL_UART_Receive_IT(&huart3, rx3_buffer, 1);
   /* USER CODE END 2 */
 
@@ -192,17 +165,17 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if(huart->Instance == USART3) // 如果�? RS485 来的数据
+    if(huart->Instance == USART3) // 如果是 RS485 来的数据
     {
         modbus_rx_buf[modbus_rx_index++] = rx3_buffer[0];
-        // �?单的判断：如果你知道从站回传大概多少字节，或者用空闲中断判断
-        // 这里假设回传 7个字�? (地址1 + 功能�?1 + 字节�?1 + 数据2 + CRC2)
+        // 简单的判断：如果你知道从站回传大概多少字节，或者用空闲中断判断
+        // 这里假设回传 7个字节 (地址1 + 功能码1 + 字节数1 + 数据2 + CRC2)
         if(modbus_rx_index >= 7) 
         {
-            modbus_frame_received = 1; // 标记收到完整�?
-            modbus_rx_index = 0;       // 清零下标，准备下�?�?
+            modbus_frame_received = 1; // 标记收到完整包
+            modbus_rx_index = 0;       // 清零下标，准备下一次
         }
-        HAL_UART_Receive_IT(&huart3, rx3_buffer, 1); // 重新�?启接�?
+        HAL_UART_Receive_IT(&huart3, rx3_buffer, 1); // 重新开启接收
     }
 }
 /* USER CODE END 4 */

@@ -21,20 +21,22 @@ Target DLL:      CMSIS_AGDI.dll V1.31.18.0
 Dialog DLL:      TCM.DLL V1.36.2.0
  
 <h2>Project:</h2>
-D:\Graduation Project\Final_V1.0_Success\MDK-ARM\STM32_Modbus_MQTT_Gateway_02.uvprojx
-Project File Date:  01/29/2026
+D:\Graduation Project\STM32_Modbus_MQTT_Gateway_02\MDK-ARM\STM32_Modbus_MQTT_Gateway_02.uvprojx
+Project File Date:  01/17/2026
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 6 (build 750)', folder: 'D:\develop\keil5arm\ARM\ARMCC\Bin'
 Build target 'STM32_Modbus_MQTT_Gateway_02'
 compiling freertos.c...
-../Src/freertos.c(364): warning:  #223-D: function "Spi395Exchange" declared implicitly
-    Spi395Exchange(0x06); 
-../Src/freertos.c: 1 warning, 0 errors
+../Src/freertos.c(357): warning:  #223-D: function "ch395_enable_ping" declared implicitly
+    ch395_enable_ping(1); 
+../Src/freertos.c(320): warning:  #177-D: variable "ch395_ver"  was declared but never referenced
+    uint8_t ch395_ver = 0;
+../Src/freertos.c: 2 warnings, 0 errors
 linking...
-Program Size: Code=16400 RO-data=900 RW-data=212 ZI-data=27892  
+Program Size: Code=14748 RO-data=516 RW-data=144 ZI-data=22776  
 FromELF: creating hex file...
-"STM32_Modbus_MQTT_Gateway_02\STM32_Modbus_MQTT_Gateway_02.axf" - 0 Error(s), 1 Warning(s).
+"STM32_Modbus_MQTT_Gateway_02\STM32_Modbus_MQTT_Gateway_02.axf" - 0 Error(s), 2 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -57,7 +59,7 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE:5.2.0
-Build Time Elapsed:  00:00:01
+Build Time Elapsed:  00:00:02
 </pre>
 </body>
 </html>
