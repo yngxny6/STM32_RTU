@@ -222,9 +222,8 @@ uint16_t MQTT_Get_Subscribe_Packet(uint8_t *tx_buf, char *topic) {
 }
 
 // 修正后的设置本地端口函数
-void ch395_set_socket_locport(uint8_t sockindex, uint16_t locport)
-{
-    ch395_write_cmd(0x12); // CMD11_SET_SOCKET_L_PORT 是 0x12
+void ch395_set_socket_locport(uint8_t sockindex, uint16_t locport) {
+    ch395_write_cmd(0x12); // 必须是 0x12
     ch395_write_data(sockindex);
     ch395_write_data((uint8_t)locport);
     ch395_write_data((uint8_t)(locport >> 8));
