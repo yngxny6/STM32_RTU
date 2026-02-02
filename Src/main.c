@@ -48,10 +48,10 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t rx3_buffer[1];       // æ¥æ”¶å•å­—èŠ‚ç¼“å†²
-uint8_t modbus_rx_buf[128];  // å®Œæ•´å¸§ç¼“å†²
+uint8_t rx3_buffer[1];       // æ¥æ”¶å•å­—èŠ‚ç¼“å†?
+uint8_t modbus_rx_buf[128];  // å®Œæ•´å¸§ç¼“å†?
 uint16_t modbus_rx_index = 0;
-uint8_t modbus_frame_received = 0; // æ ‡å¿—ä½
+uint8_t modbus_frame_received = 0; // æ ‡å¿—ä½?
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,9 +101,29 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  printf("System Starting...\r\n"); // æ‰“å°ä¸€å¥ï¼Œæµ‹è¯•ä¸²å£1å¥½ä¸å¥½ä½¿
+  printf("System Starting...\r\n"); // ´òÓ¡Ò»¾ä£¬²âÊÔ´®¿Ú1ºÃ²»ºÃÊ¹
   
-  // !!! å¿…é¡»æ·»åŠ è¿™ä¸€å¥ï¼Œå¼€å¯ RS485 (ä¸²å£3) çš„æ¥æ”¶ä¸­æ–­ !!!
+  // ============================================================
+  // [¹Ø¼üĞŞ¸´] Ç¿ÖÆ½ûÓÃ°åÔØ VS1053 Ğ¾Æ¬£¬·ÀÖ¹¸ÉÈÅ SPI1 ×ÜÏß
+  // Õ½½¢V4°åÔØµÄ VS1053 Óë ÍøÂçĞ¾Æ¬¹²ÓÃ SPI1£¬±ØĞëÀ­¸ß PF6/PF7
+  // ============================================================
+  __HAL_RCC_GPIOF_CLK_ENABLE(); // ¿ªÆô PF ¿ÚÊ±ÖÓ
+
+  GPIO_InitTypeDef GPIO_InitStruct_VS = {0};
+  GPIO_InitStruct_VS.Pin = GPIO_PIN_6 | GPIO_PIN_7; // PF6(XDCS Êı¾İÆ¬Ñ¡), PF7(XCS ÃüÁîÆ¬Ñ¡)
+  GPIO_InitStruct_VS.Mode = GPIO_MODE_OUTPUT_PP;    // ÍÆÍìÊä³ö
+  GPIO_InitStruct_VS.Pull = GPIO_PULLUP;            // ÉÏÀ­
+  GPIO_InitStruct_VS.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct_VS);
+
+  // À­¸ßÆ¬Ñ¡£¬¸æËß VS1053£º¡°±Õ×ì£¬²»ÒªËµ»°¡±
+  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_6, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_7, GPIO_PIN_SET);
+  
+  printf("System Info: VS1053 Disabled (PF6/PF7 Set High)\r\n");
+  // ============================================================
+
+  // !!! ±ØĞëÌí¼ÓÕâÒ»¾ä£¬¿ªÆô RS485 (´®¿Ú3) µÄ½ÓÊÕÖĞ¶Ï !!!
   HAL_UART_Receive_IT(&huart3, rx3_buffer, 1);
   /* USER CODE END 2 */
 
@@ -165,17 +185,17 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if(huart->Instance == USART3) // å¦‚æœæ˜¯ RS485 æ¥çš„æ•°æ®
+    if(huart->Instance == USART3) // å¦‚æœæ˜? RS485 æ¥çš„æ•°æ®
     {
         modbus_rx_buf[modbus_rx_index++] = rx3_buffer[0];
-        // ç®€å•çš„åˆ¤æ–­ï¼šå¦‚æœä½ çŸ¥é“ä»ç«™å›ä¼ å¤§æ¦‚å¤šå°‘å­—èŠ‚ï¼Œæˆ–è€…ç”¨ç©ºé—²ä¸­æ–­åˆ¤æ–­
-        // è¿™é‡Œå‡è®¾å›ä¼  7ä¸ªå­—èŠ‚ (åœ°å€1 + åŠŸèƒ½ç 1 + å­—èŠ‚æ•°1 + æ•°æ®2 + CRC2)
+        // ç®?å•çš„åˆ¤æ–­ï¼šå¦‚æœä½ çŸ¥é“ä»ç«™å›ä¼ å¤§æ¦‚å¤šå°‘å­—èŠ‚ï¼Œæˆ–è€…ç”¨ç©ºé—²ä¸­æ–­åˆ¤æ–­
+        // è¿™é‡Œå‡è®¾å›ä¼  7ä¸ªå­—èŠ? (åœ°å€1 + åŠŸèƒ½ç ?1 + å­—èŠ‚æ•?1 + æ•°æ®2 + CRC2)
         if(modbus_rx_index >= 7) 
         {
-            modbus_frame_received = 1; // æ ‡è®°æ”¶åˆ°å®Œæ•´åŒ…
-            modbus_rx_index = 0;       // æ¸…é›¶ä¸‹æ ‡ï¼Œå‡†å¤‡ä¸‹ä¸€æ¬¡
+            modbus_frame_received = 1; // æ ‡è®°æ”¶åˆ°å®Œæ•´åŒ?
+            modbus_rx_index = 0;       // æ¸…é›¶ä¸‹æ ‡ï¼Œå‡†å¤‡ä¸‹ä¸?æ¬?
         }
-        HAL_UART_Receive_IT(&huart3, rx3_buffer, 1); // é‡æ–°å¼€å¯æ¥æ”¶
+        HAL_UART_Receive_IT(&huart3, rx3_buffer, 1); // é‡æ–°å¼?å¯æ¥æ”?
     }
 }
 /* USER CODE END 4 */

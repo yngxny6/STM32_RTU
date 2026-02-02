@@ -32,6 +32,8 @@
 #include "ch395inc.h"
 #include "ch395cmd.h"
 #include "ch395.h"
+#include "spi.h"
+#include "mqtt.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,7 +53,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-// å®šä¹‰ RS485 æ¥æ”¶ç¼“å†²åŒº
+// å®šä¹‰ RS485 æ¥æ”¶ç¼“å†²åŒ?
 extern uint8_t rx3_buffer[1]; 
 extern uint8_t modbus_rx_buf[128]; 
 extern uint16_t modbus_rx_index;
@@ -60,7 +62,9 @@ extern uint8_t modbus_frame_received;
 osThreadId StartTaskHandle;
 osThreadId Task_ModbusHandle;
 osThreadId Task_MQTTHandle;
+osThreadId Task_WebServerHandle;
 osMessageQId ModbusDataQueueHandle;
+osMutexId mySpiMutexHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -72,6 +76,7 @@ extern osMessageQId ModbusDataQueueHandle;
 void StartDefaultTask(void const * argument);
 void StartTask_Modbus(void const * argument);
 void StartTask_MQTT(void const * argument);
+void StartTask_WebServer(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -100,6 +105,10 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
+  /* Create the mutex(es) */
+  /* definition and creation of mySpiMutex */
+  osMutexDef(mySpiMutex);
+  mySpiMutexHandle = osMutexCreate(osMutex(mySpiMutex));
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -135,6 +144,10 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(Task_MQTT, StartTask_MQTT, osPriorityNormal, 0, 512);
   Task_MQTTHandle = osThreadCreate(osThread(Task_MQTT), NULL);
 
+  /* definition and creation of Task_WebServer */
+  osThreadDef(Task_WebServer, StartTask_WebServer, osPriorityNormal, 0, 512);
+  Task_WebServerHandle = osThreadCreate(osThread(Task_WebServer), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -169,151 +182,21 @@ void StartDefaultTask(void const * argument)
 void StartTask_Modbus(void const * argument)
 {
   /* USER CODE BEGIN StartTask_Modbus */
-  // Modbus è¯»å–ä¿æŒå¯„å­˜å™¨æŒ‡ä»¤: 01 03 00 00 00 01 84 0A (è¯»åœ°å€1çš„å¯„å­˜å™¨0ï¼Œå…±1ä¸ª)
-  uint8_t modbus_query[] = {0x01, 0x03, 0x00, 0x00, 0x00, 0x01, 0x84, 0x0A};
-  uint16_t sensor_value = 0;
-
+  /* Infinite loop */
   for(;;)
   {
-    // 1. å‘é€æŸ¥è¯¢æŒ‡ä»¤
-    HAL_UART_Transmit(&huart3, modbus_query, 8, 100);
-    printf("Modbus: Sent Query...\r\n");
-
-    // 2. å»¶æ—¶ç­‰å¾…æ•°æ®å›ä¼  (ç®€å•ç²—æš´æ³•)
-    osDelay(200); 
-
-    // 3. æ£€æŸ¥æ˜¯å¦æ”¶åˆ°æ•°æ®
-    if(modbus_frame_received == 1)
-    {
-        modbus_frame_received = 0;
-        // è§£ææ•°æ®: ç¬¬4å’Œç¬¬5å­—èŠ‚æ˜¯æ•°æ® (ç´¢å¼•3å’Œ4)
-        // å‡è®¾å›ä¼ : 01 03 02 [High] [Low] CRC CRC
-        uint8_t high_byte = modbus_rx_buf[3];
-        uint8_t low_byte = modbus_rx_buf[4];
-        sensor_value = (high_byte << 8) | low_byte;
-
-        printf("Modbus: Got Value = %d\r\n", sensor_value);
-
-        // 4. å‘é€åˆ°é˜Ÿåˆ—ç»™ MQTT ä»»åŠ¡
-        xQueueSend(ModbusDataQueueHandle, &sensor_value, 0);
-    }
-    else
-    {
-        printf("Modbus: Timeout!\r\n");
-    }
-
-    osDelay(1000); // 1ç§’é‡‡é›†ä¸€æ¬¡
+    osDelay(1);
   }
+  /* USER CODE END StartTask_Modbus */
 }
 
-// ================= MQTT åè®®å°è£…å·¥å…·å‡½æ•° =================
-
-// 1. ç”Ÿæˆ MQTT è¿æ¥æŠ¥æ–‡ (CONNECT)
-// è¿”å›å€¼ï¼šæŠ¥æ–‡æ€»é•¿åº¦
-uint16_t MQTT_Get_Connect_Packet(uint8_t *buff, char *client_id)
-{
-    uint16_t len = strlen(client_id);
-    uint16_t index = 0;
-
-    // Fixed Header (0x10 = CONNECT)
-    buff[index++] = 0x10; 
-    // Remaining Length (åé¢æ•°æ®çš„é•¿åº¦)
-    // ç®€å•è®¡ç®—ï¼šVarHeader(10) + ClientID_Len(2) + ClientID
-    uint8_t remain_len = 10 + 2 + len;
-    buff[index++] = remain_len;
-
-    // Variable Header
-    // Protocol Name: "MQTT"
-    buff[index++] = 0x00; buff[index++] = 0x04;
-    buff[index++] = 'M'; buff[index++] = 'Q'; buff[index++] = 'T'; buff[index++] = 'T';
-    // Protocol Level (4 = v3.1.1)
-    buff[index++] = 0x04;
-    // Connect Flags (0x02 = Clean Session)
-    buff[index++] = 0x02;
-    // Keep Alive (60s)
-    buff[index++] = 0x00; buff[index++] = 60;
-
-    // Payload (Client ID)
-    buff[index++] = (len >> 8);
-    buff[index++] = (len & 0xFF);
-    memcpy(&buff[index], client_id, len);
-    index += len;
-
-    return index;
-}
-
-// 2. ç”Ÿæˆ MQTT å‘å¸ƒæŠ¥æ–‡ (PUBLISH)
-// topic: ä¸»é¢˜ (å¦‚ "dev/temp")
-// msg: æ¶ˆæ¯å†…å®¹ (å¦‚ "{\"val\":25}")
-uint16_t MQTT_Get_Publish_Packet(uint8_t *buff, char *topic, char *msg)
-{
-    uint16_t topic_len = strlen(topic);
-    uint16_t msg_len = strlen(msg);
-    uint16_t index = 0;
-    
-    // Fixed Header (0x30 = PUBLISH)
-    buff[index++] = 0x30;
-    
-    // Remaining Length calculation
-    // TopicLen(2) + Topic + Payload
-    uint16_t remain_len = 2 + topic_len + msg_len;
-    
-    // MQTTå‰©ä½™é•¿åº¦ç¼–ç  (æ”¯æŒ < 128å­—èŠ‚çš„å°åŒ…)
-    // å¦‚æœæ•°æ®å¤ªé•¿(>127)ï¼Œè¿™é‡Œéœ€è¦å¤æ‚çš„ç®—æ³•ï¼Œä½†ä¼ ä¸ªæ¸©åº¦JSONè¶³å¤Ÿäº†
-    if(remain_len > 127) {
-        buff[index++] = (remain_len % 128) | 0x80;
-        buff[index++] = (remain_len / 128);
-    } else {
-        buff[index++] = remain_len;
-    }
-
-    // Variable Header: Topic Name
-    buff[index++] = (topic_len >> 8);
-    buff[index++] = (topic_len & 0xFF);
-    memcpy(&buff[index], topic, topic_len);
-    index += topic_len;
-
-    // Payload: Message
-    memcpy(&buff[index], msg, msg_len);
-    index += msg_len;
-
-    return index;
-}
-
-// 3. ç”Ÿæˆ MQTT è®¢é˜…æŠ¥æ–‡ (SUBSCRIBE)
-// topic: è¦è®¢é˜…çš„ä¸»é¢˜ (å¦‚ "device/control")
-uint16_t MQTT_Get_Subscribe_Packet(uint8_t *buff, char *topic)
-{
-    uint16_t topic_len = strlen(topic);
-    uint16_t index = 0;
-    
-    // Fixed Header (0x82 = SUBSCRIBE)
-    buff[index++] = 0x82;
-    // Remaining Length: PacketID(2) + TopicLen(2) + Topic + QoS(1)
-    uint8_t remain_len = 2 + 2 + topic_len + 1;
-    buff[index++] = remain_len;
-    
-    // Variable Header: Packet ID (éšä¾¿å¡«ï¼Œæ¯”å¦‚ 0x0001)
-    buff[index++] = 0x00; buff[index++] = 0x01;
-    
-    // Payload: Topic
-    buff[index++] = (topic_len >> 8);
-    buff[index++] = (topic_len & 0xFF);
-    memcpy(&buff[index], topic, topic_len);
-    index += topic_len;
-    
-    // QoS (0)
-    buff[index++] = 0x00;
-    
-    return index;
-}
-
+/* USER CODE BEGIN Header_StartTask_MQTT */
 /**
 * @brief Function implementing the Task_MQTT thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE BEGIN Header_StartTask_MQTT */
+/* USER CODE END Header_StartTask_MQTT */
 void StartTask_MQTT(void const * argument)
 {
   /* USER CODE BEGIN StartTask_MQTT */
@@ -323,14 +206,14 @@ void StartTask_MQTT(void const * argument)
   uint8_t mqtt_tx_buf[256]; 
   uint16_t mqtt_len = 0;
   
-  // æ¥æ”¶ç¼“å†²åŒº
-  uint8_t rx_buf[256]; // åŠ å¤§ä¸€ç‚¹
+  // æ¥æ”¶ç¼“å†²åŒ?
+  uint8_t rx_buf[256]; // åŠ å¤§ä¸?ç‚?
   uint16_t rx_len = 0;
   
   uint8_t socket_index = 0; 
   uint8_t sock_status[2]; 
   
-  // çŠ¶æ€æœº: 0=æœªè¿æ¥, 1=å·²è¿æ¥TCP, 2=å·²è®¢é˜…MQTT
+  // çŠ¶æ?æœº: 0=æœªè¿æ?, 1=å·²è¿æ¥TCP, 2=å·²è®¢é˜…MQTT
   uint8_t mqtt_state = 0; 
   
   // ================= 1. ç½‘ç»œå‚æ•° =================
@@ -342,7 +225,7 @@ void StartTask_MQTT(void const * argument)
   uint8_t mask_addr[] = {255, 255, 255, 0}; 
   uint8_t mac_addr[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE};
 
-  // ================= 2. åˆå§‹åŒ– =================
+  // ================= 2. åˆå§‹åŒ? =================
   printf("CH395Q: Resetting...\r\n");
   ch395_hardware_reset(); osDelay(200);
   
@@ -352,6 +235,30 @@ void StartTask_MQTT(void const * argument)
   ch395_cmd_set_gw_ipaddr(gateway_ip);
   ch395_cmd_set_maskaddr(mask_addr); 
   osDelay(50); 
+  
+  printf("--- SPI Hardware Test Start ---\r\n");
+
+// 1. ²âÊÔÖ¸Áî: CMD_CHECK_EXIST (0x06)
+// Âß¼­: ·¢ËÍ 0x55£¬Ğ¾Æ¬Ó¦¸Ã°´Î»È¡·´·µ»Ø 0xAA (¶ş½øÖÆ 01010101 -> 10101010)
+uint8_t check_val = 0x55; 
+uint8_t result = 0;
+
+CH395_CS_Low();
+uint8_t cmd = 0x06; // CMD_CHECK_EXIST
+HAL_SPI_Transmit(&hspi1, &cmd, 1, 100);       // ·¢ËÍÃüÁî
+HAL_SPI_TransmitReceive(&hspi1, &check_val, &result, 1, 100); // ·¢ËÍÊı¾İ²¢¶ÁÈ¡½ÓÊÕ
+CH395_CS_High();
+
+printf("Test Result: Send 0x55, Read 0x%02X\r\n", result);
+
+if (result == 0xAA) {
+    printf(">> HARDWARE SUCCESS: CH395 is Alive!\r\n");
+} else {
+    printf(">> HARDWARE FAIL: SPI Error or Chip Dead.\r\n");
+    // Èç¹û¶Áµ½ 00£¬Í¨³£ÊÇ MISO ÏßÃ»½ÓºÃ£¬»òÕß SPI Ä£Ê½(CPOL/CPHA)²»¶Ô
+    // Èç¹û¶Áµ½ FF£¬Í¨³£ÊÇÆ¬Ñ¡Ã»À­µÍ£¬»òÕß MISO ±»ÆäËûÉè±¸¸ÉÈÅ
+}
+printf("--- SPI Hardware Test End ---\r\n");
   
   ch395_cmd_init(); osDelay(200);
   ch395_enable_ping(1); 
@@ -370,29 +277,29 @@ void StartTask_MQTT(void const * argument)
   osDelay(20);
   ch395_tcp_connect(socket_index);
 
-  // ================= 4. ä¸»å¾ªç¯ =================
+  // ================= 4. ä¸»å¾ªç? =================
   for(;;)
   {
-    // A. å¿…é¡»åšçš„ï¼šæ¸…ç†ä¸­æ–­ + è¯»å–æ•°æ®
+    // A. å¿…é¡»åšçš„ï¼šæ¸…ç†ä¸­æ–? + è¯»å–æ•°æ®
     uint8_t int_stat = ch395_get_socket_int(socket_index);
     
-    // è¯»å–æ•°æ® (è¿™é‡Œå®ç°äº†ä¸‹è¡Œæ§åˆ¶è§£æ)
+    // è¯»å–æ•°æ® (è¿™é‡Œå®ç°äº†ä¸‹è¡Œæ§åˆ¶è§£æ?)
     if(ch395_get_recv_length(socket_index) > 0)
     {
         rx_len = ch395_get_recv_length(socket_index);
         ch395_get_recv_data(socket_index, rx_len, rx_buf);
-        rx_buf[rx_len] = 0; // è¡¥é›¶ï¼Œç¡®ä¿æœ€åæœ‰ä¸€ä¸ªç»“æŸç¬¦
+        rx_buf[rx_len] = 0; // è¡¥é›¶ï¼Œç¡®ä¿æœ€åæœ‰ä¸?ä¸ªç»“æŸç¬¦
 
         // ========================================================
-        // !!! æ ¸å¿ƒä¿®å¤ï¼šæ¸…æ´—æ•°æ® !!!
-        // MQTT æŠ¥æ–‡ä¸­åŒ…å« 0x00 (å¦‚ä¸»é¢˜é•¿åº¦é«˜ä½)ï¼Œä¼šå¯¼è‡´ strstr æå‰æˆªæ–­ã€‚
-        // æˆ‘ä»¬æŠŠä¸­é—´çš„ 0x00 æ›¿æ¢æˆç©ºæ ¼ï¼Œè®© strstr èƒ½ç©¿é€è¿‡å»æ‰¾åˆ° JSONã€‚
+        // !!! æ ¸å¿ƒä¿®å¤ï¼šæ¸…æ´—æ•°æ? !!!
+        // MQTT æŠ¥æ–‡ä¸­åŒ…å? 0x00 (å¦‚ä¸»é¢˜é•¿åº¦é«˜ä½?)ï¼Œä¼šå¯¼è‡´ strstr æå‰æˆªæ–­ã€?
+        // æˆ‘ä»¬æŠŠä¸­é—´çš„ 0x00 æ›¿æ¢æˆç©ºæ ¼ï¼Œè®? strstr èƒ½ç©¿é€è¿‡å»æ‰¾åˆ? JSONã€?
         // ========================================================
         for(int i = 0; i < rx_len; i++)
         {
             if(rx_buf[i] == 0x00) 
             {
-                rx_buf[i] = ' '; // æ›¿æ¢æˆç©ºæ ¼
+                rx_buf[i] = ' '; // æ›¿æ¢æˆç©ºæ ?
             }
         }
         
@@ -400,16 +307,16 @@ void StartTask_MQTT(void const * argument)
         printf("DEBUG Recv: [%s]\r\n", rx_buf);
         
         // --- æ™ºèƒ½æ¨¡ç³Šè§£æ ---
-        // 1. å…ˆæ‰¾åˆ° "led" åœ¨å“ª
+        // 1. å…ˆæ‰¾åˆ? "led" åœ¨å“ª
         char *pLed = strstr((char*)rx_buf, "led");
         
         if(pLed != NULL)
         {
             // 2. !!! å…³é”®ä¿®æ”¹ !!!
-            // åªåœ¨ "led" åé¢å¯»æ‰¾ '0' æˆ– '1'
-            // è¿™æ ·å°±ä¸ä¼šè¢«æŠ¥å¤´çš„ '0' ç»™è¯¯å¯¼äº†ï¼
+            // åªåœ¨ "led" åé¢å¯»æ‰¾ '0' æˆ? '1'
+            // è¿™æ ·å°±ä¸ä¼šè¢«æŠ¥å¤´çš? '0' ç»™è¯¯å¯¼äº†ï¼?
             
-            // å…ˆæ‰¾ '1' (å¼€ç¯) â€”â€” ä¼˜å…ˆåˆ¤æ–­å¼€ç¯ï¼Œé€»è¾‘æ›´å®‰å…¨
+            // å…ˆæ‰¾ '1' (å¼?ç?) â€”â?? ä¼˜å…ˆåˆ¤æ–­å¼?ç¯ï¼Œé€»è¾‘æ›´å®‰å…?
             if(strchr(pLed, '1') != NULL)
             {
                  printf("CMD: LED ON (Set Low)\r\n");
@@ -426,10 +333,10 @@ void StartTask_MQTT(void const * argument)
 
     ch395_cmd_get_socket_status(socket_index, sock_status);
     
-    // çŠ¶æ€ 4 = TCP å·²å»ºç«‹
+    // çŠ¶æ?? 4 = TCP å·²å»ºç«?
     if(sock_status[1] == TCP_ESTABLISHED)
     {
-        // é˜¶æ®µ 1: å‘é€ CONNECT
+        // é˜¶æ®µ 1: å‘é?? CONNECT
         if(mqtt_state == 0)
         {
              printf("Sending MQTT CONNECT...\r\n");
@@ -438,13 +345,13 @@ void StartTask_MQTT(void const * argument)
              mqtt_state = 1; 
              osDelay(1000); 
         }
-        // é˜¶æ®µ 2: å‘é€ SUBSCRIBE (è®¢é˜… device/control)
+        // é˜¶æ®µ 2: å‘é?? SUBSCRIBE (è®¢é˜… device/control)
         else if(mqtt_state == 1)
         {
              printf("Subscribing to 'device/control'...\r\n");
              mqtt_len = MQTT_Get_Subscribe_Packet(mqtt_tx_buf, "device/control");
              ch395_send_data(socket_index, mqtt_tx_buf, mqtt_len);
-             mqtt_state = 2; // å…¨éƒ¨å‡†å¤‡å°±ç»ªï¼
+             mqtt_state = 2; // å…¨éƒ¨å‡†å¤‡å°±ç»ªï¼?
              osDelay(1000);
         }
         
@@ -452,7 +359,7 @@ void StartTask_MQTT(void const * argument)
         if(mqtt_state == 2 && xQueueReceive(ModbusDataQueueHandle, &received_val, 100) == pdTRUE)
         {
              // åªæœ‰å½“æ²¡æœ‰æ”¶åˆ°æ§åˆ¶æŒ‡ä»¤æ—¶ï¼ŒLEDæ‰ä½œä¸ºå‘é€æŒ‡ç¤ºç¯ç¿»è½¬
-             // è¿™é‡Œä¸ºäº†æ¼”ç¤ºæ§åˆ¶æ•ˆæœï¼Œå¯ä»¥å…ˆæŠŠè‡ªåŠ¨ç¿»è½¬æ³¨é‡Šæ‰ï¼Œæˆ–è€…ä¿ç•™
+             // è¿™é‡Œä¸ºäº†æ¼”ç¤ºæ§åˆ¶æ•ˆæœï¼Œå¯ä»¥å…ˆæŠŠè‡ªåŠ¨ç¿»è½¬æ³¨é‡Šæ‰ï¼Œæˆ–è€…ä¿ç•?
              //HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_5); 
              
              memset(json_buffer, 0, sizeof(json_buffer)); 
@@ -461,7 +368,7 @@ void StartTask_MQTT(void const * argument)
              // æ‰“åŒ… PUBLISH æŠ¥æ–‡
              mqtt_len = MQTT_Get_Publish_Packet(mqtt_tx_buf, "device/data", json_buffer);
              
-             // å‘é€
+             // å‘é??
              printf("MQTT: Publish %s\r\n", json_buffer);
              ch395_send_data(socket_index, mqtt_tx_buf, mqtt_len);
         }
@@ -469,7 +376,7 @@ void StartTask_MQTT(void const * argument)
     else if(sock_status[1] == TCP_CLOSED)
     {
         printf("TCP Closed. Reconnecting...\r\n");
-        mqtt_state = 0; // é‡ç½®çŠ¶æ€ï¼Œé‡æ–°èµ°ç™»å½•æµç¨‹
+        mqtt_state = 0; // é‡ç½®çŠ¶æ?ï¼Œé‡æ–°èµ°ç™»å½•æµç¨?
         ch395_open_socket(socket_index);
         osDelay(20);
         ch395_tcp_connect(socket_index);
@@ -482,6 +389,88 @@ void StartTask_MQTT(void const * argument)
   }
   /* USER CODE END StartTask_MQTT */
 }
+
+/* USER CODE BEGIN Header_StartTask_WebServer */
+/**
+* @brief Function implementing the Task_WebServer thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTask_WebServer */
+void StartTask_WebServer(void const * argument)
+{
+  /* USER CODE BEGIN StartTask_WebServer */
+  
+  uint8_t socket_index = 1; // ¼ÈÈ»MQTTÓÃÁË0£¬ÎÒÃÇWebÓÃ1
+  uint16_t len = 0;
+  uint8_t rx_buffer[512];   // ½ÓÊÕ»º³åÇø
+  char html_buffer[512];    // ·¢ËÍ»º³åÇø
+  
+  // 1. ÑÓÊ±µÈ´ı CH395 ³õÊ¼»¯Íê±Ï (¼ÙÉè main.c ÀïÒÑ¾­ Reset ¹ıÁË)
+  osDelay(1000); 
+
+  // 2. ÅäÖÃ Socket 1 Îª TCP ·şÎñÆ÷£¬¶Ë¿Ú 80
+  CH395_SetSocket_Type(socket_index, PROTO_TYPE_TCP);
+  CH395_SetSocket_Port(socket_index, 80);
+  CH395_OpenSocket(socket_index);
+  CH395_TCP_Listen(socket_index); // ½øÈë¼àÌı×´Ì¬£¬µÈ´ıä¯ÀÀÆ÷Á¬½Ó
+
+  /* Infinite loop */
+  for(;;)
+  {
+    // 3. ÂÖÑ¯ÊÇ·ñÓĞÊı¾İµ½À´
+    // (CH395ÖĞ¶Ï·½Ê½¸üºÃ£¬µ«ÂÖÑ¯ÊÊºÏĞÂÊÖÀí½â)
+    len = CH395_Get_RecvLen(socket_index);
+    
+    if (len > 0) 
+    {
+        // ÏŞÖÆ¶ÁÈ¡³¤¶È£¬·ÀÖ¹Òç³ö
+        if(len > 511) len = 511;
+        
+        // 4. ¶ÁÈ¡ä¯ÀÀÆ÷·¢À´µÄ HTTP ÇëÇó
+        CH395_Get_Data(socket_index, rx_buffer, len);
+        rx_buffer[len] = '\0'; // Ìí¼Ó×Ö·û´®½áÊø·û
+        
+        // 5. ÅĞ¶ÏÊÇ²»ÊÇ GET ÇëÇó
+        if (strstr((char*)rx_buffer, "GET") != NULL) 
+        {
+            // 6. ×¼±¸Òª·¢ËÍµÄ HTML ÍøÒ³
+            // ÕâÀïÎÒÃÇÏÈ×öÒ»¸ö×î¼òµ¥µÄÍøÒ³£¬ÏÔÊ¾µ±Ç°×´Ì¬
+            sprintf(html_buffer, 
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html\r\n"
+                "Connection: close\r\n\r\n"
+                "<html><body>"
+                "<h1>STM32 RTU Web Config</h1>"
+                "<form>"
+                "MQTT IP: <input type='text' value='192.168.1.100'><br>"
+                "Port: <input type='text' value='1883'><br>"
+                "<input type='submit' value='Save'>"
+                "</form>"
+                "</body></html>"
+            );
+            
+            // 7. ·¢ËÍ»ØÈ¥
+            CH395_Send_Data(socket_index, (uint8_t*)html_buffer, strlen(html_buffer));
+            
+            // 8. ÉÔ×÷ÑÓÊ±ºó¶Ï¿ªÁ¬½Ó (HTTP¶ÌÁ¬½Ó)
+            osDelay(50); 
+            CH395_TCP_Disconnect(socket_index);
+            
+            // 9. ÖØĞÂ½øÈë¼àÌı£¬µÈ´ıÏÂÒ»´ÎË¢ĞÂ
+            // CH395 Ä³Ğ©Ä£Ê½ÏÂ¶Ï¿ªºóĞèÒªÖØĞÂÖ´ĞĞ Listen£¬¾ßÌåÊÓ¹Ì¼ş°æ±¾
+            // ±£ÏÕÆğ¼û£¬ÔÙ´ÎÖ´ĞĞ¼àÌı
+            CH395_OpenSocket(socket_index); 
+            CH395_TCP_Listen(socket_index); 
+        }
+    }
+    
+    // Ã»Êı¾İÊ±£¬ÊÍ·ÅCPU¸ø±ğµÄÈÎÎñ (ÈçMQTT)
+    osDelay(20);
+  }
+  /* USER CODE END StartTask_WebServer */
+}
+
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 

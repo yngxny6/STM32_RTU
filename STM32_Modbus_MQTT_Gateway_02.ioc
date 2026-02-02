@@ -1,8 +1,10 @@
 #MicroXplorer Configuration settings - do not modify
 FREERTOS.FootprintOK=true
-FREERTOS.IPParameters=Tasks01,FootprintOK,Queues01
+FREERTOS.IPParameters=Tasks01,FootprintOK,Queues01,Mutexes01,configTOTAL_HEAP_SIZE
+FREERTOS.Mutexes01=mySpiMutex,Dynamic,NULL
 FREERTOS.Queues01=ModbusDataQueue,4,uint16_t,0,Dynamic,NULL,NULL
-FREERTOS.Tasks01=StartTask,0,128,StartDefaultTask,Default,NULL,Dynamic,NULL,NULL;Task_Modbus,2,128,StartTask_Modbus,Default,NULL,Dynamic,NULL,NULL;Task_MQTT,0,128,StartTask_MQTT,Default,NULL,Dynamic,NULL,NULL
+FREERTOS.Tasks01=StartTask,0,128,StartDefaultTask,Default,NULL,Dynamic,NULL,NULL;Task_Modbus,2,512,StartTask_Modbus,Default,NULL,Dynamic,NULL,NULL;Task_MQTT,0,512,StartTask_MQTT,Default,NULL,Dynamic,NULL,NULL;Task_WebServer,0,512,StartTask_WebServer,Default,NULL,Dynamic,NULL,NULL
+FREERTOS.configTOTAL_HEAP_SIZE=20480
 File.Version=6
 GPIO.groupedBy=Group By Peripherals
 KeepUserPlacement=false
